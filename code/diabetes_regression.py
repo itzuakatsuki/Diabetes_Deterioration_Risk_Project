@@ -12,6 +12,19 @@ TIR / GMI,見檔尾 REG_ON_CGM 說明(會把 cgm_metrics.csv 併回)。
 
 環境:需要 pandas, numpy, scikit-learn, matplotlib;xgboost 選用(無則退回
 HistGradientBoostingRegressor)。與 diabetes_deterioration_pipeline.py 放同目錄。
+
+----------------------------------------------------------------
+【X / Y 定義與解讀】
+----------------------------------------------------------------
+X:
+  除 HbA1c 與 GA 外的臨床特徵。Patient Number 僅用於 GroupKFold 分組，
+  不可作為預測特徵。
+
+Y:
+  該次臨床紀錄的 HbA1c 連續值。
+
+本模型回答的是「目前臨床特徵能否估計同次量測的 HbA1c」，不是未來 HbA1c
+變化的縱向預測。若要預測未來 HbA1c，需有明確基準日期、後續量測日期及時間順序。
 """
 
 import os

@@ -18,6 +18,21 @@
 
 依賴:pandas, numpy, scikit-learn, matplotlib;需與 diabetes_deterioration_pipeline.py
 同目錄(重用 load_data)。CGM 讀 .xls 需 xlrd,或先轉成 .xlsx。
+
+----------------------------------------------------------------
+【風險分數的正確解讀】
+----------------------------------------------------------------
+長期軸:
+  P(Any_Complication | 當前臨床特徵) 是橫斷面的關聯/風險分層分數，
+  不是未來 1/3/5 年併發症發生率。
+
+短期軸:
+  由個人 CGM 的 Markov 轉移機率推算，但其可信度依賴時間間隔是否正確、
+  轉移矩陣是否有足夠觀測，以及 Markov 齊次性假設是否合理。
+
+四象限:
+  以樣本中位數切分，只能視為探索性分層，不是外部驗證的臨床門檻。
+  「立即介入、慢性追蹤」等文字應視為介面示意，不能取代醫師判斷。
 """
 
 import os
@@ -96,7 +111,10 @@ def load_cgm(fp):
 def st3(v):
     return 0 if v < 70 else (1 if v <= 180 else 2)   # 0=Low 1=InRange 2=High
 
-
+# FIXME（重要）：
+# 目前函式雖接收 ts 與 max_gap_steps，實際迴圈並未使用時間戳篩選，
+# 因此可能把跨缺測區段的兩筆資料當成相鄰轉移。
+# 在正式宣稱「15 分鐘風險」前，應改為只計入 14–16 分鐘的轉移。
 def transition_matrix(states, max_gap_steps=2, ts=None):
     T = np.zeros((3, 3))
     for i in range(1, len(states)):
@@ -145,7 +163,7 @@ def main():
     M["long_group"] = pd.qcut(M["long_risk"], 3, labels=["低", "中", "高"])
     M["short_group"] = pd.qcut(M["short_risk"].rank(method="first"), 3, labels=["低", "中", "高"])
 
-    # 四象限(以中位數切)
+    # 四象限(以中位數切)：僅為探索性風險層級，不是臨床診斷或處置門檻
     lt, stv = M["long_risk"].median(), M["short_risk"].median()
     def quad(r):
         hi_l = r["long_risk"] >= lt

@@ -27,6 +27,27 @@ xgboost 與 shap 為選用:若已安裝則使用 XGBoost + SHAP,否則自動退�
 HistGradientBoosting + permutation importance(結果格式相同,可先跑通)。
 
 作者備註:全流程固定 random_state=42;所有輸出寫入 ./output/。
+
+----------------------------------------------------------------
+【研究定位與 X / Y 定義】
+----------------------------------------------------------------
+X（輸入特徵）:
+  人口學、身體組成、生活行為、糖尿病病程與生化檢驗值。
+  Patient Number 僅用來建立 groups，不可作為模型特徵。
+  用藥特徵預設排除，以降低「已有併發症後才用藥」造成的反向因果洩漏。
+
+Y（分類目標）:
+  Macrovascular、Microvascular、Any_Complication，皆為該次紀錄當下
+  「是否已存在併發症」的二元標籤，不是未來新發事件。
+
+正確解讀:
+  本模型估計的是 P(目前有併發症 | 目前臨床特徵)，用途是關聯分類與風險分層。
+  由於資料為橫斷面資料，不可宣稱為未來 1/3/5 年併發症發生率，也不可作因果推論。
+
+臨床溝通:
+  對醫師：可作為追蹤與進一步檢查的排序輔助，不取代診斷。
+  對病患：應表述為「目前特徵與已有併發症者較相似，需要進一步評估」，
+          不可表述為「未來一定會發生」。
 """
 
 import os
@@ -163,6 +184,8 @@ def load_data():
     med["OtherAgents"] = raw["Other Agents"].apply(has_event)
 
     # --- 目標變數 ---
+    # 注意：以下 Y 是「當次紀錄是否已有併發症」，並非未來追蹤事件。
+    # 因此輸出應稱為風險分層/關聯分類，不應稱為未來發生率預測。
     Macro = raw["Diabetic Macrovascular  Complications"].apply(has_event)
     Micro = raw["Diabetic Microvascular Complications"].apply(has_event)
     Acute = raw["Acute Diabetic Complications"].apply(has_event)  # 本資料全為 none → 恆 0

@@ -4,10 +4,26 @@ data/clinical/*.xls
 data/cgm/*.xlsx
 data/cgm/*.xls
 
+# Legacy input paths currently used by scripts
+/Shanghai_T2DM_Summary.xlsx
+/Shanghai_T2DM/
+
+# Protect all files inside data directories
+/data/clinical/**
+!/data/clinical/.gitkeep
+/data/cgm/**
+!/data/cgm/.gitkeep
+
 # Output and results
 output/**
 !output/.gitkeep
 !output/*/.gitkeep
+
+# Legacy output paths currently used by scripts
+/output_reg/
+/cgm_output/
+/output_risk/
+/output_cost_mc/
 
 # Python
 __pycache__/

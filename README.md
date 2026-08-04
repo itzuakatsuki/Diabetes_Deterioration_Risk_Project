@@ -606,22 +606,11 @@ macOS / Linux：
 source .venv/bin/activate
 ```
 
-目前 `requirements.txt` 為空白 placeholder，因此以下指令目前不會安裝完整環境：
+建議先更新 pip，再安裝專案依賴：
 
 ```bash
-pip install -r requirements.txt
-```
-
-可先手動安裝核心套件：
-
-```bash
-pip install numpy pandas scipy scikit-learn matplotlib seaborn openpyxl
-```
-
-選用功能：
-
-```bash
-pip install xgboost shap tensorflow xlrd
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
 套件用途：
@@ -894,7 +883,7 @@ mc_cost_by_quadrant.png
 11. LSTM 內部 validation 未明確設定 `shuffle=False`。
 12. 單一病患 LSTM 結果不能直接推論至整體族群。
 13. 尚未使用外部資料進行驗證。
-14. `requirements.txt` 尚未完整建立。
+14. `requirements.txt` 已列出主要依賴套件，但尚未鎖定精確版本，也尚未在全新的乾淨環境完成完整重現測試。
 15. 輸入與輸出路徑仍為 legacy relative paths。
 16. 成本 CPI 倍數仍為 placeholder。
 17. 成本模型可能重複計算同一病患的多次紀錄。
@@ -939,7 +928,7 @@ data/cgm/*.xlsx
 - 建立 `project_schema.py`，集中管理 label、mapping、狀態門檻與成本 metadata；
 - 建立 `generate_documentation.py`，自動產生變數代碼表；
 - 統一 `data/` 與 `output/` 路徑；
-- 補齊並鎖定 `requirements.txt`；
+- 在乾淨的虛擬環境完成依賴安裝與五支程式的執行測試，並建立可重現的版本鎖定檔；
 - Markov 僅保留 14–16 分鐘有效轉移；
 - LSTM 在缺口處切段，且使用 chronological validation 或 `shuffle=False`；
 - 分群前每位病患只保留一筆基準紀錄；

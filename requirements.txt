@@ -17,18 +17,3 @@ shap
 # LSTM / deep learning
 tensorflow
 
----
-|   requirements  | 程式中的寫法                | 用途               |
-| --------------- | -------------------------- | ----------------- |
-| `numpy`         | `import numpy`             | 數值、陣列、矩陣    |
-| `pandas`        | `import pandas`            | 表格與 Excel 資料  |
-| `scipy`         | `from scipy.stats...`      | 卡方檢定           |
-| `scikit-learn`  | `from sklearn...`          | 分類、迴歸、分群、Pipeline |
-| `matplotlib`    | `import matplotlib.pyplot` | 繪圖               |
-| `seaborn`       | `import seaborn`           | EDA 熱圖           |
-| `openpyxl`      | 由 pandas 呼叫             | 讀取 `.xlsx`        |
-| `xlrd`          | 由 pandas 呼叫             | 讀取 `.xls`         |
-| `xgboost`       | `from xgboost...`          | XGBoost 模型        |
-| `shap`          | `import shap`              | 模型解釋            |
-| `tensorflow`    | `from tensorflow.keras...` | LSTM               |
----

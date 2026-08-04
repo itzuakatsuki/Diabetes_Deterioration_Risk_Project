@@ -24,10 +24,12 @@ These instructions ensure scientific rigor and ethical compliance throughout the
    - Prevents data leakage from manual preprocessing steps
    - Facilitates reproducibility and auditing
 
-5. **Use out-of-fold predictions for evaluation**
-   - Never report training-set metrics as test metrics
-   - Apply cross-validation strictly: models trained on fold A are evaluated on fold B only
-   - Test set must remain completely separate from model development
+5. **Use patient-grouped out-of-fold predictions for primary internal evaluation**
+   - Use GroupKFold based on patient identity.
+   - Clearly label these results as internal cross-validation performance.
+   - Never report training-set metrics as validation or test metrics.
+   - Use the term "held-out test performance" only when a truly separate,
+     untouched test or external dataset exists.ment
 
 6. **Never report training-set metrics as test metrics**
    - Clearly distinguish between training, validation, and test performance

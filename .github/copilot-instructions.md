@@ -11,7 +11,8 @@ These instructions ensure scientific rigor and ethical compliance throughout the
 2. **Never commit patient-level raw data**
    - All patient identifiers and raw clinical data are excluded from version control
    - Use `.gitignore` to prevent accidental uploads
-   - Only committed aggregated or processed outputs are acceptable
+   - Only de-identified and aggregated outputs may be committed.
+   - Processed patient-level files must not be committed merely because they are derived from raw data.
 
 3. **Use patient-grouped validation for repeated clinical records**
    - Apply stratification strategies at the patient level, not individual visit level

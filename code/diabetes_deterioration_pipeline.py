@@ -8,8 +8,9 @@ Logistic Regression / XGBoost / KNN vs GMM),整併為單一可重複流程,並�
   (1) 前處理洩漏:原流程在「切分前」就對整份資料 fit 中位數與 StandardScaler,
       再做交叉驗證 → 測試折資訊外洩。本檔改把 impute + scale 放進 sklearn
       Pipeline,只在每個訓練折上 fit。
-  (2) 病患層級洩漏:109 筆來自 100 位病患(8 位有多次回診)。同一人若同時落在
-      train 與 test,會高估效能。本檔預設「每位病患只留一筆」並可改用 GroupKFold。
+  (2)病患層級洩漏：109 筆紀錄來自約 100 位病患。程式預設保留全部紀錄，
+     並使用 GroupKFold 依病患編號分組，避免同一病患同時出現在訓練折與驗證折。
+     亦可將 DEDUP_ONE_PER_PATIENT 設為 True，改為每位病患只保留第一筆紀錄。
   (3) 特徵洩漏:Other Agents / Hypoglycemic Agents 這類用藥常是「因為有併發症才開」
       (如 epalrestat→神經病變、calcium dobesilate→視網膜病變),會把答案洩漏給模型。
       本檔預設不納入這些用藥二元變數(可用 INCLUDE_MED_FEATURES 開關檢視影響)。
@@ -518,7 +519,9 @@ def main():
         imp.to_csv(f"{OUTDIR}/importance_{t}.csv", index=False, encoding="utf-8-sig")
         oddsr.to_csv(f"{OUTDIR}/lr_oddsratio_{t}.csv", index=False, encoding="utf-8-sig")
         print("Top5 重要特徵:", ", ".join(imp["Feature"].head(5)), "\n")
-
+      
+    #特徵重要性與 odds ratio 屬全資料配適後的探索性解釋，不可視為外部驗證或因果效果。
+  
     metrics_df = pd.concat(all_metrics, ignore_index=True)
     metrics_df.to_csv(f"{OUTDIR}/model_results.csv", index=False, encoding="utf-8-sig")
 

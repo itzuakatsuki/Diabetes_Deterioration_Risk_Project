@@ -25,34 +25,6 @@ Y:
 本模型回答的是「目前臨床特徵能否估計同次量測的 HbA1c」，不是未來 HbA1c
 變化的縱向預測。若要預測未來 HbA1c，需有明確基準日期、後續量測日期及時間順序。
 """
-"""
-迴歸問題:以臨床特徵預測 HbA1c(長期血糖控制)
-====================================================
-對應作業 3.5「迴歸問題:基準模型 Linear Regression + 主要模型 XGBoost/RF」,
-評估指標為 MAE、RMSE、MAPE、R²(作業 3.6)。與分類流程共用同一套資料處理
-(直接 import diabetes_deterioration_pipeline.load_data),並同樣以 GroupKFold
-依病患分組交叉驗證,避免病患層級洩漏。
-
-目標可替換:改 TARGET 即可預測其他連續變數(如 FPG、BMI);若要預測 CGM 衍生的
-TIR / GMI,見檔尾 REG_ON_CGM 說明(會把 cgm_metrics.csv 併回)。
-
-環境:需要 pandas, numpy, scikit-learn, matplotlib;xgboost 選用(無則退回
-HistGradientBoostingRegressor)。與 diabetes_deterioration_pipeline.py 放同目錄。
-
-----------------------------------------------------------------
-【X / Y 定義與解讀】
-----------------------------------------------------------------
-X:
-  除 HbA1c 與 GA 外的臨床特徵。Patient Number 僅用於 GroupKFold 分組，
-  不可作為預測特徵。
-
-Y:
-  該次臨床紀錄的 HbA1c 連續值。
-
-本模型回答的是「目前臨床特徵能否估計同次量測的 HbA1c」，不是未來 HbA1c
-變化的縱向預測。若要預測未來 HbA1c，需有明確基準日期、後續量測日期及時間順序。
-"""
-
 
 import os
 import numpy as np

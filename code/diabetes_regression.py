@@ -1,13 +1,16 @@
 """
 迴歸問題:以臨床特徵預測 HbA1c(長期血糖控制)
 ====================================================
-對應作業 3.5「迴歸問題:基準模型 Linear Regression + 主要模型 XGBoost/RF」,
+對應作業 3.5「迴歸問題:基準模型 Linear Regression + 主要模型 XGBoost」,
 評估指標為 MAE、RMSE、MAPE、R²(作業 3.6)。與分類流程共用同一套資料處理
 (直接 import diabetes_deterioration_pipeline.load_data),並同樣以 GroupKFold
 依病患分組交叉驗證,避免病患層級洩漏。
 
-目標可替換:改 TARGET 即可預測其他連續變數(如 FPG、BMI);若要預測 CGM 衍生的
-TIR / GMI,見檔尾 REG_ON_CGM 說明(會把 cgm_metrics.csv 併回)。
+目標可替換:改 TARGET 可預測其他連續變數(如 FPG、BMI)，但若更換 TARGET，
+必須同步將目標欄位從特徵中排除，並檢查 load_data() 是否對該目標進行 log1p 轉換。
+不能只修改 TARGET 一行 ; 
+若要以 TIR 或 GMI 為目標，目前需另外撰寫病患編號合併流程；
+本檔僅提供實作方向，尚未自動併入 cgm_metrics.csv。
 
 環境:需要 pandas, numpy, scikit-learn, matplotlib;xgboost 選用(無則退回
 HistGradientBoostingRegressor)。與 diabetes_deterioration_pipeline.py 放同目錄。

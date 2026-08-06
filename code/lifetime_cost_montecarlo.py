@@ -108,7 +108,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold, cross_val_predict
 
-from diabetes_deterioration_pipelin import load_data
+from diabetes_deterioration_pipeline import load_data
 
 SEED = 42
 rng = np.random.default_rng(SEED)

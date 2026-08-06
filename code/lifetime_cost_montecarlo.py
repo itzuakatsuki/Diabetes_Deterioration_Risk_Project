@@ -8,9 +8,15 @@
 成本累計時界由 HORIZON_MODE 決定：
 - life_table：預設採生命表平均餘命；
 - fixed_age：累計至 HORIZON_AGE 所指定的年齡。
+
+1)HORIZON_MODE="life_table" 目前使用的是暫定年齡別餘命情境，
+尚未使用正式官方生命表；不可把結果稱為經生命表驗證的餘生成本。
+2)fixed-age 模式仍保留若病患已超過 80 歲，切回 fixed_age 模式後仍會強迫計算 1 年。
+但較合理的方式是：並在 0 年時處理 annuity 為 0；或者明確排除基準年齡已超過 horizon 的病患。
+
 折現率由 DISCOUNT_RATE 設定(健康經濟常用 3%)。
 
-本模型納入兩類隨機不確定性,輸出成本的「平均 + 95% 區間 + 分布」:
+本模型納入兩類隨機不確定性,輸出成本的「平均 + 95% 模擬區間 + 分布」:
 
 1. 併發症狀態不確定性：
    依 P(Macrovascular) 與 P(Microvascular) 抽取 Bernoulli 狀態，
@@ -36,9 +42,10 @@
 避免同一病患重複計入母體總額。
 
 ★時界預設採生命表平均餘命，並可透過 HORIZON_MODE 切換為固定年齡情境。
-  ★ 罹病時間(Duration)並未浪費:它是分類模型中小血管併發症最強的預測因子(OR≈3.25),
-    亦即「罹病越久 → 併發症機率越高 → 餘生成本越高」——Duration 透過影響風險預測來影響成本,
+  ★ Duration 作為分類模型特徵之一，會透過併發症風險分數間接影響成本，
+    即「罹病越久 → 併發症機率越高 → 餘生成本越高」,
     而非拿去乘一段虛構的歷史成本。此為其正確且完全以資料驅動的用法。
+    (其實際係數與排序應以本次執行輸出的 lr_oddsratio_*.csv 為準)
   本模型另以「當前預期狀態」外推未來,未建模逐年病程進展(那需 CORE/UKPDS 級微模擬),屬一階近似。
 
 依賴:pandas, numpy, scikit-learn, matplotlib;需與 diabetes_deterioration_pipeline.py 同目錄。
@@ -53,12 +60,9 @@
 2. 物價換算:
    INFLATION_MEAN = cumulative_inflation()
    INFLATION_CV = 0.0 
-   目前只是 placeholder，不可當成已驗證參數。
-   正式版本應使用上海市官方「醫療保健類 CPI」逐年鏈結 2001→2024：
-       factor = Π(CPI_t / 100)
-       cost_2024 = cost_2001 × factor
-   並在報告列出每年指數、官方表名、網址/年鑑、下載日期及計算表。
-   若不同年份的 CPI 分類口徑曾改變，需另列可比性限制。
+   目前已使用程式內列示的上海 CPI 序列進行逐年連乘；
+   正式報告仍需列出各年度官方來源、表號、下載日期與計算表，
+   並揭露 2015／2016 年分類口徑變更。
 
 3. 不可重複計算通膨:
    若成本已換算為 2024 年不變人民幣，未來年度應使用實質折現率，
@@ -80,8 +84,10 @@
 
 不同回診紀錄應選擇首筆、最新一筆或基準紀錄，目前仍屬分析設計限制。
 較穩健的近期成果:
-   優先改為「2025 年度成本情境分析」；若保留未來成本，可先做固定 5 年情境，
-   並明確標示狀態維持不變。完整餘生成本需年度病程轉移率與死亡率。
+   後續可另建立最新可得年份的年度成本情境；目前程式輸出統一為 2024 年人民幣；
+   若保留未來成本，可先做固定 5 年情境，並明確標示狀態維持不變。
+   完整餘生成本需年度病程轉移率與死亡率。
+
 """
 
 import os
@@ -175,6 +181,8 @@ HORIZON_MODE = "life_table"    # "life_table"(建議) 或 "fixed_age"(原作法)
 LIFE_EXPECTANCY = {20: 58, 30: 49, 40: 39, 50: 30, 55: 26, 60: 21.5,
                    65: 17.5, 70: 14, 75: 10.8, 80: 8, 85: 5.8, 90: 4.1, 95: 3.0, 100: 2.0}
 RISK_TABLE = "output_risk/patient_risk_table.csv"   # 有則併入象限
+#HORIZON_MODE="life_table" 目前使用的是暫定年齡別餘命情境，
+#尚未使用正式官方生命表；不可把結果稱為經生命表驗證的餘生成本。
 
 # ---- 併發症機率的類別權重設定(基準情境 vs 敏感度情境)----
 # 分類模型以 class_weight="balanced" 配適,可提升少數類的召回、對排序(AUC)有利;
@@ -304,7 +312,7 @@ def money_label():
 def remaining_years(age):
     """[修正 1] 依 HORIZON_MODE 回傳成本累計年數。"""
     if HORIZON_MODE == "fixed_age":
-        return max(HORIZON_AGE - age, 1)          # 原作法(高齡者會被壓成 1 年)
+        return max(HORIZON_AGE - age, 1)          # 原作法(若病患已超過 80 歲會強迫壓成 1 年) 
     ages = np.array(sorted(LIFE_EXPECTANCY))
     vals = np.array([LIFE_EXPECTANCY[a] for a in ages])
     return float(np.interp(age, ages, vals))
@@ -324,7 +332,7 @@ def main():
     # [修正 3] 年成本與物價倍數屬「母體參數不確定性」——其真值對全體病患只有一個,
     #          不會因人而異。原程式在病患迴圈內各自抽樣,109 次獨立抽樣觸發大數法則、
     #          誤差互相抵消,使母體區間相對寬度由 59.5% 縮成 5.6%(實測),
-    #          母體 95% 區間因而嚴重低估。改為迴圈外各抽 N_SIM 條、每次模擬全體共用。
+    #          母體 95% 模擬區間因而嚴重低估。改為迴圈外各抽 N_SIM 條、每次模擬全體共用。
     #          併發症狀態(Bernoulli)維持在迴圈內,那才是真正的個體層級不確定性。
     cost_draw = {k: gamma_samples(v, COST_CV, N_SIM) for k, v in c.items()}
     infl_draw = gamma_samples(INFLATION_MEAN, INFLATION_CV, N_SIM)
@@ -382,7 +390,7 @@ def main():
     print(f"母體餘生總成本({horizon_label()},{money_label()}):    mean=%.0f  95%%模擬區間=[%.0f, %.0f]" %
           (all_pop.mean(), np.percentile(all_pop, 2.5), np.percentile(all_pop, 97.5)))
 
-    # ---- 圖 1:各風險象限的終身成本(平均 + 95% 區間誤差棒)----
+    # ---- 圖 1:各風險象限的終身成本(平均 + 95% 模擬區間誤差棒)----
     if "quadrant" in out.columns:
         g = out.groupby("quadrant").agg(
             n=("record", "size"),

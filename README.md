@@ -347,6 +347,7 @@ RUN_EDA = True
 - `IMP_{target}.png` 會依重要性表產生；
 - 若 XGBoost 與 SHAP 均可使用，會另外產生 `SHAP_{target}.png`；
 - SHAP 並不是 `IMP` 圖的替代檔，兩者可能同時存在。
+- EDA 使用原始臨床單位資料 d_raw；建模使用 log1p 轉換後的資料 d。
 
 ### 7.2 `code/diabetes_regression.py`
 

@@ -10,8 +10,10 @@
 
   短期惡化風險(血糖失控)= 由每位病患自己的馬可夫轉移矩陣,推算「未來 k 步後
       落在高血糖(>180)或低血糖(<70)」的機率(P^k,起點為 InRange)。
-      - 計算 1 小時(4 步)、4 小時(16 步)、24 小時(96 步)三個時界。
-      - 以 24 小時(≈長期穩態)之出範圍機率作為短期風險分數。
+      - 在假設每一步均代表 15 分鐘的前提下，4、16、96 步分別標記為 1、4、24 小時情境。
+        由於目前未檢查實際 timestamp，這些數值應解讀為 k-step scenario score，
+        不能直接視為校準後的實際時鐘時間風險。
+      - 以第 96 步的出範圍機率作為 24-step 短期風險分數；不預設其必然已達穩態。
 
   綜合:以兩軸中位數切成四象限,對應不同臨床處置,供高齡友善決策 App 使用。
 
@@ -21,7 +23,7 @@
 ----------------------------------------------------------------
 【風險分數的正確解讀】
 ----------------------------------------------------------------
-長期軸:
+長期軸 ( 使用LogisticRegression(class_weight="balanced") ):
   P(Any_Complication | 當前臨床特徵) 是橫斷面的關聯/風險分層分數，
   不是未來 1/3/5 年併發症發生率。
 
@@ -93,7 +95,7 @@ def long_term_risk():
     prob = cross_val_predict(lr, X, y, cv=GroupKFold(5), groups=pid,
                              method="predict_proba")[:, 1]
     return pd.DataFrame({"record": record_id, "patient": pid.values,
-                         "long_risk": prob, "has_complication": y.values})
+                         "OOF risk score": prob, "has_complication": y.values})
 
 
 # ---------- 2. 短期風險:每位病患的馬可夫 P^k ----------

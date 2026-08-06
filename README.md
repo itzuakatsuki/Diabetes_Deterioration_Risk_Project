@@ -394,6 +394,10 @@ CGM 分析內容：
 - 單一病患 LSTM；
 - 全體監測 persistence baseline；
 - 全體監測逐一訓練 LSTM 並與 persistence baseline 比較。
+- 跨病患 pooled LSTM；
+- 依病患編號進行 5-fold 分組評估；
+- 訓練折內另以病患層級 validation 進行 early stopping；
+- 與逐監測 LSTM 及 persistence baseline 比較。
 
 重要設定：
 

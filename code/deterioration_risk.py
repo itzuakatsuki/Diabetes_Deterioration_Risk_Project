@@ -98,7 +98,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold, cross_val_predict
 
-from diabetes_deterioration_pipeline1 import load_data
+from diabetes_deterioration_pipeline import load_data
 
 SEED = 42
 SUMMARY_XLSX = "Shanghai_T2DM_Summary.xlsx"

@@ -75,7 +75,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.inspection import permutation_importance
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-from diabetes_deterioration_pipeline1 import load_data   # 重用同一套資料處理
+from diabetes_deterioration_pipeline import load_data   # 重用同一套資料處理
 
 SEED = 42
 OUTDIR = "output_reg"

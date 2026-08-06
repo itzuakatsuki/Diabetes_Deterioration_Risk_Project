@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 糖尿病餘生醫療成本 —— 蒙地卡羅模擬(機率敏感度分析 PSA)
 ================================================================
@@ -92,7 +91,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold, cross_val_predict
 
-from diabetes_deterioration_pipeline import load_data
+from diabetes_deterioration_pipeline1 import load_data
 
 SEED = 42
 rng = np.random.default_rng(SEED)
@@ -103,16 +102,75 @@ os.makedirs(OUTDIR, exist_ok=True)
 N_SIM = 5000               # 每位病患的模擬次數
 COST_TYPE = "direct"       # "direct"=年直接醫療費用;"total"=年總費用
 COST_CV = 0.30             # 成本 PSA 變異係數(假設;可調)
-# 物價校正:陳興寶成本為 2001 年幣值。中國「醫療保健類 CPI」漲幅溫和(年增多為
-# +0.4~3%,個別年份 ~+7%),累計 2001→約2023 約 1.5–2×。此處預設 1.8×(可調),
-# 請以《中國統計年鑑》醫療保健類 CPI 之精確累計值取代。切勿用「人均衛生支出成長」
-# (~13×),因其含使用量/技術成長,會高估「同一項併發症」之價格。
-INFLATION_MEAN = 1.8       # 2001→約2023 醫療 CPI 校正倍數(醫療 CPI 基準;請自行更新)
-INFLATION_CV = 0.15        # 校正倍數不確定性(涵蓋約 1.4–2.3×)
+# ---- 物價校正:以《上海統計年鑑》醫療保健類 CPI 逐年連乘(2001 → 2024 年幣值)----
+# 陳興寶成本為 2001 年幣值。採上海口徑而非全國,係因成本來源(復旦大學)與 CGM 樣本
+# 同為上海,口徑一致性較佳。切勿用「人均衛生支出成長」(~13×),因其含使用量/技術
+# 成長,會高估「同一項併發症」之價格。
+#
+# 環比指數(上年=100),來源:《上海統計年鑑》價格章「居民消費價格(分類)指數」
+#   2002-2015 取自表 9.2(1991~2015)之「醫療保健和個人用品」大類
+#   2016-2018 取自表 9.2(2016~2018)、2019-2020 表 8.2(2018~2020)
+#   2021-2022 表 8.2(2021~2022)、2023-2024 表 8.2(2022~2024)
+# ★ 口徑斷點:2015 年(含)以前為「醫療保健和個人用品」,2016 年起「個人用品」移出、
+#   成為獨立之「醫療保健」大類。此為現有公布資料範圍內的最佳做法,報告需載明。
+# ★ 重疊年交叉核對:2018 兩表皆 102.4、2022 兩表皆 102.1,佐證分段串接無誤。
+MEDICAL_CPI = {
+    2002: 97.6,  2003: 100.0, 2004: 100.0, 2005: 100.3, 2006: 101.1, 2007: 100.2,
+    2008: 103.1, 2009: 99.4,  2010: 103.7, 2011: 104.1, 2012: 100.6, 2013: 100.0,
+    2014: 100.4, 2015: 99.3,  2016: 109.0, 2017: 106.6, 2018: 102.4, 2019: 103.3,
+    2020: 101.2, 2021: 98.9,  2022: 102.1, 2023: 100.2, 2024: 99.2,
+}
+COST_BASE_YEAR = 2001      # 成本資料的幣值年(非論文出版年 2003)
+TARGET_YEAR = 2024         # 校正到哪一年的幣值
+
+
+def cumulative_inflation(base_year=COST_BASE_YEAR, target_year=TARGET_YEAR):
+    """
+    累計倍數 = Π_{y=base+1}^{target} CPI[y]/100。
+    環比指數 CPI[y] 表示「y 年相對 y-1 年」,故 CPI[2001] 描述的是 2000→2001,
+    成本既為 2001 年幣值即不應計入;2001→2024 跨 23 年,對應 2002 至 2024 共 23 項。
+    (連乘而非各年漲幅相加,為國家統計局確認之算法。)
+    """
+    years = list(range(base_year + 1, target_year + 1))
+    missing = [y for y in years if y not in MEDICAL_CPI]
+    if missing:
+        raise ValueError(f"MEDICAL_CPI 缺少年度:{missing}")
+    mult = 1.0
+    for y in years:
+        mult *= MEDICAL_CPI[y] / 100.0
+    return mult
+
+
+INFLATION_MEAN = cumulative_inflation()   # 2001→2024 = 1.3737(年均 +1.39%)
+# 逐年指數為統計年鑑公布之確定數值,非待估參數,故不再對其加設分布。
+# 口徑選擇(上海 vs 全國)之影響改以敏感度分析呈現。
+INFLATION_CV = 0.0
 DISCOUNT_RATE = 0.03
-HORIZON_AGE = 80           # 餘生時界:估算至 80 歲(成本自「當前年齡」起算,見下)
+HORIZON_AGE = 80           # 僅在 HORIZON_MODE="fixed_age" 時使用
+
+# [修正 1] 原程式 years = max(HORIZON_AGE - age, 1),但資料中有 8 筆年齡 >= 80
+#          (83,84,84,85,85,85,92,97),這些人被強制算成「餘生 1 年」,邏輯不成立且
+#          嚴重低估(83 歲者年金因子 0.971 對生命表餘命 7 年的 6.230,差 6.4 倍)。
+#          改用生命表平均餘命:對年輕病患結果與原作法相近(57 歲原 23 年 vs 餘命約 24 年),
+#          同時正確處理高齡者。保留 "fixed_age" 模式可還原原作法作對照。
+HORIZON_MODE = "life_table"    # "life_table"(建議) 或 "fixed_age"(原作法)
+# 平均餘命(年)—— 量級估計,建議以中國/上海官方生命表精確值取代
+LIFE_EXPECTANCY = {20: 58, 30: 49, 40: 39, 50: 30, 55: 26, 60: 21.5,
+                   65: 17.5, 70: 14, 75: 10.8, 80: 8, 85: 5.8, 90: 4.1, 95: 3.0, 100: 2.0}
 RISK_TABLE = "output_risk/patient_risk_table.csv"   # 有則併入象限
-# 註:第 2 型糖尿病為成年後才罹患(非天生),故成本自病患「當前年齡」向前累計至 80 歲,
+
+# ---- 併發症機率的類別權重設定(基準情境 vs 敏感度情境)----
+# 分類模型以 class_weight="balanced" 配適,可提升少數類的召回、對排序(AUC)有利;
+# 但該設定會提高少數類權重、上移截距,使預測機率系統性高於實際盛行率。
+# 本成本模型以 rng.random() < p 抽 Bernoulli,吃的是「機率絕對值」而非排序,
+# 故此偏誤會直接傳遞至成本。實測(本資料):
+#   大血管 實際盛行率 36.7% / balanced 預測均值 43.4%(+6.7 pp)
+#   小血管 實際盛行率 24.8% / balanced 預測均值 34.1%(+9.4 pp)
+# 因此本研究以 balanced 為基準情境(與報告 4.3、4.9 之分類模型一致),
+# 另以未加權模型作為敏感度情境,呈現校準差異對成本估計的影響區間。
+CLASS_WEIGHT = "balanced"          # 基準情境;敏感度情境為 None
+CLASS_WEIGHT_SCENARIOS = ["balanced", None]
+# 註:第 2 型糖尿病為成年後才罹患(非天生),故成本自病患「當前年齡」向前累計,
 #     屬「餘生前瞻醫療成本」,而非自出生起的終身總額。
 
 # ---- 陳興寶(2003)表 1 四組年成本(2001 RMB,已核對)----
@@ -122,12 +180,89 @@ COST = {
 }
 
 
-def oof_prob(X, y, groups):
+def oof_prob(X, y, groups, class_weight=None):
+    """out-of-fold 陽性機率。class_weight 未指定時採 CLASS_WEIGHT(基準情境)。"""
+    cw = CLASS_WEIGHT if class_weight == "__default__" else class_weight
     lr = Pipeline([("imp", SimpleImputer(strategy="median")), ("sc", StandardScaler()),
-                   ("clf", LogisticRegression(max_iter=5000, class_weight="balanced",
+                   ("clf", LogisticRegression(max_iter=5000, class_weight=cw,
                                               solver="liblinear", random_state=SEED))])
     return cross_val_predict(lr, X, y, cv=GroupKFold(5), groups=groups,
                              method="predict_proba")[:, 1]
+
+
+def simulate_costs(p_macro, p_micro, age, is_first, seed=SEED):
+    """給定併發症機率,執行蒙地卡羅並回傳(每人成本平均陣列, 母體總成本 N_SIM 條)。"""
+    rg = np.random.default_rng(seed)
+    c = COST[COST_TYPE]; r = DISCOUNT_RATE
+
+    def gam(mean, cv, size):
+        if cv <= 0:
+            return np.full(size, mean, dtype=float)
+        return rg.gamma(1.0 / cv ** 2, mean * cv ** 2, size=size)
+
+    cost_draw = {k: gam(v, COST_CV, N_SIM) for k, v in c.items()}
+    infl_draw = gam(INFLATION_MEAN, INFLATION_CV, N_SIM)
+    pop = np.zeros(N_SIM); per = []
+    for i in range(len(p_macro)):
+        ann = (1 - (1 + r) ** (-remaining_years(age[i]))) / r
+        mac = rg.random(N_SIM) < p_macro[i]
+        mic = rg.random(N_SIM) < p_micro[i]
+        cs = np.select([mac & mic, mac & ~mic, ~mac & mic],
+                       [cost_draw["both"], cost_draw["macro"], cost_draw["micro"]],
+                       default=cost_draw["none"])
+        lt = cs * infl_draw * ann
+        per.append(lt.mean())
+        if is_first[i]:
+            pop += lt
+    return np.array(per), pop
+
+
+def sensitivity_class_weight(d, targets, pid, age, is_first):
+    """
+    敏感度分析:比較 class_weight="balanced"(基準)與 None(未加權)兩種機率設定
+    對餘生成本估計的影響,並同時報告兩者的校準品質。
+    輸出 cost_sensitivity_class_weight.csv。
+    """
+    from sklearn.metrics import roc_auc_score, brier_score_loss
+    y_mac = targets["Macrovascular"].astype(int).values
+    y_mic = targets["Microvascular"].astype(int).values
+    rows = []
+    for cw in CLASS_WEIGHT_SCENARIOS:
+        pm = oof_prob(d, y_mac, pid, class_weight=cw)
+        pi = oof_prob(d, y_mic, pid, class_weight=cw)
+        per, pop = simulate_costs(pm, pi, age, is_first)
+        rows.append(dict(
+            class_weight=str(cw),
+            macro_prev=y_mac.mean() * 100, macro_pred=pm.mean() * 100,
+            micro_prev=y_mic.mean() * 100, micro_pred=pi.mean() * 100,
+            macro_auc=roc_auc_score(y_mac, pm), micro_auc=roc_auc_score(y_mic, pi),
+            macro_brier=brier_score_loss(y_mac, pm), micro_brier=brier_score_loss(y_mic, pi),
+            cost_mean=per.mean(), cost_median=float(np.median(per)),
+            pop_total=pop.mean(),
+            pop_lo=float(np.percentile(pop, 2.5)), pop_hi=float(np.percentile(pop, 97.5))))
+    S = pd.DataFrame(rows)
+    S.round(4).to_csv(f"{OUTDIR}/cost_sensitivity_class_weight.csv",
+                      index=False, encoding="utf-8-sig")
+
+    print("\n=== 敏感度分析:併發症機率之類別權重設定 ===")
+    print(f"{'設定':<16}{'大血管預測':>11}{'小血管預測':>11}{'AUC(大/小)':>14}"
+          f"{'每人平均':>11}{'母體總計':>11}")
+    print("-" * 76)
+    print(f"{'實際盛行率':<14}{S.macro_prev[0]:>10.1f}%{S.micro_prev[0]:>10.1f}%"
+          f"{'—':>14}{'—':>11}{'—':>11}")
+    for _, x in S.iterrows():
+        lab = "balanced(基準)" if x.class_weight == "balanced" else "未加權(敏感度)"
+        print(f"{lab:<14}{x.macro_pred:>10.1f}%{x.micro_pred:>10.1f}%"
+              f"{x.macro_auc:>7.3f}/{x.micro_auc:.3f}{x.cost_mean:>11,.0f}"
+              f"{x.pop_total/1e4:>9,.0f}萬")
+    b, u = S.iloc[0], S.iloc[1]
+    print(f"\n  兩情境差距:每人平均 {(u.cost_mean/b.cost_mean-1)*100:+.1f}%、"
+          f"母體總計 {(u.pop_total/b.pop_total-1)*100:+.1f}%")
+    print(f"  校準品質(Brier,越低越好):balanced {b.macro_brier:.4f}/{b.micro_brier:.4f}、"
+          f"未加權 {u.macro_brier:.4f}/{u.micro_brier:.4f}")
+    print("  ★ 未加權模型之預測均值較接近實際盛行率、Brier 較低,故基準情境之成本估計")
+    print("    可視為上界;兩情境的象限相對倍數與集中度指標不受影響。")
+    return S
 
 
 def gamma_samples(mean, cv, size):
@@ -139,48 +274,75 @@ def gamma_samples(mean, cv, size):
     return rng.gamma(k, theta, size=size)
 
 
+def horizon_label():
+    """[修正 1 配套] 圖表與訊息一律用這個字串,避免標題寫死「至 80 歲」與實際時界不符。"""
+    return "生命表平均餘命" if HORIZON_MODE == "life_table" else f"至 {HORIZON_AGE} 歲"
+
+
+def money_label():
+    """金額幣值年說明。"""
+    return f"{TARGET_YEAR} 年人民幣"
+
+
+def remaining_years(age):
+    """[修正 1] 依 HORIZON_MODE 回傳成本累計年數。"""
+    if HORIZON_MODE == "fixed_age":
+        return max(HORIZON_AGE - age, 1)          # 原作法(高齡者會被壓成 1 年)
+    ages = np.array(sorted(LIFE_EXPECTANCY))
+    vals = np.array([LIFE_EXPECTANCY[a] for a in ages])
+    return float(np.interp(age, ages, vals))
+
+
 def main():
-    d, med, targets, pid = load_data()
+    d, med, targets, pid, _ = load_data()   # [修正] load_data 現多回傳 d_raw
     raw = pd.read_excel("Shanghai_T2DM_Summary.xlsx", sheet_name="T2DM")
     record_id = raw["Patient Number"].astype(str).values
     age = d["Age"].fillna(d["Age"].median()).values
 
-    p_macro = oof_prob(d, targets["Macrovascular"].astype(int), pid)
-    p_micro = oof_prob(d, targets["Microvascular"].astype(int), pid)
+    p_macro = oof_prob(d, targets["Macrovascular"].astype(int), pid, class_weight=CLASS_WEIGHT)
+    p_micro = oof_prob(d, targets["Microvascular"].astype(int), pid, class_weight=CLASS_WEIGHT)
     c = COST[COST_TYPE]
     r = DISCOUNT_RATE
 
-    # FIXME：以下目前逐「紀錄」迴圈；若同一病患有多次回診，母體總成本會重複計人。
-    # 正式病患層級/母體結果前，應先依 patient_id 選定一筆基準或最新紀錄。
+    # [修正 3] 年成本與物價倍數屬「母體參數不確定性」——其真值對全體病患只有一個,
+    #          不會因人而異。原程式在病患迴圈內各自抽樣,109 次獨立抽樣觸發大數法則、
+    #          誤差互相抵消,使母體區間相對寬度由 59.5% 縮成 5.6%(實測),
+    #          母體 95% 區間因而嚴重低估。改為迴圈外各抽 N_SIM 條、每次模擬全體共用。
+    #          併發症狀態(Bernoulli)維持在迴圈內,那才是真正的個體層級不確定性。
+    cost_draw = {k: gamma_samples(v, COST_CV, N_SIM) for k, v in c.items()}
+    infl_draw = gamma_samples(INFLATION_MEAN, INFLATION_CV, N_SIM)
+
+    # [修正 2] 母體加總只計入每位病患的首筆紀錄。原程式逐 109 筆累加,
+    #          但資料為 109 筆紀錄 / 100 位病患(8 位共 9 筆重複回診),
+    #          同一病患的多次回診被重複計入母體總成本。個人估計仍全數輸出。
+    is_first = ~pd.Series(pid.values).duplicated(keep="first").values
+
     rows = []
     all_pop = np.zeros(N_SIM)                 # 母體每次模擬的總成本(供母體分布)
     for i in range(len(d)):
-        years = max(HORIZON_AGE - age[i], 1)
+        years = remaining_years(age[i])                    # [修正 1]
         annuity = (1 - (1 + r) ** (-years)) / r if r > 0 else years
 
         # (1) 併發症狀態:依模型機率抽 Bernoulli
-        # 注意：這隱含 Macro 與 Micro 在給定 X 後條件獨立，尚未被本資料驗證。
         mac = rng.random(N_SIM) < p_macro[i]
         mic = rng.random(N_SIM) < p_micro[i]
         # 每個狀態抽該組成本(Gamma),再依抽到的狀態選取
         cost_state = np.select(
             [mac & mic, mac & ~mic, ~mac & mic],
-            [gamma_samples(c["both"], COST_CV, N_SIM),
-             gamma_samples(c["macro"], COST_CV, N_SIM),
-             gamma_samples(c["micro"], COST_CV, N_SIM)],
-            default=gamma_samples(c["none"], COST_CV, N_SIM))
-        # (3) 通膨倍數
-        infl = gamma_samples(INFLATION_MEAN, INFLATION_CV, N_SIM)
+            [cost_draw["both"], cost_draw["macro"], cost_draw["micro"]],
+            default=cost_draw["none"])                    # [修正 3] 全體共用抽樣
 
-        lifetime = cost_state * infl * annuity            # N_SIM 條終身成本
-        all_pop += lifetime
+        lifetime = cost_state * infl_draw * annuity       # N_SIM 條餘生成本
+        if is_first[i]:                                   # [修正 2] 只計首筆
+            all_pop += lifetime
         rows.append(dict(
             record=record_id[i], age=int(round(age[i])),
+            years_horizon=round(years, 1), counted_in_population=bool(is_first[i]),
             P_macro=round(float(p_macro[i]), 3), P_micro=round(float(p_micro[i]), 3),
             lifetime_mean=float(lifetime.mean()),
             lifetime_lo=float(np.percentile(lifetime, 2.5)),
             lifetime_hi=float(np.percentile(lifetime, 97.5)),
-            annual_mean=float((cost_state * infl).mean()),
+            annual_mean=float((cost_state * infl_draw).mean()),
         ))
 
     out = pd.DataFrame(rows)
@@ -194,10 +356,13 @@ def main():
 
     unit = "年直接醫療費用" if COST_TYPE == "direct" else "年總費用"
     print(f"蒙地卡羅:N={N_SIM}/人;成本源 陳興寶 2003 表 1({unit},2001 RMB)")
-    print(f"成本CV={COST_CV}、通膨={INFLATION_MEAN}±(CV {INFLATION_CV})、折現 {r:.0%}、到 {HORIZON_AGE} 歲\n")
-    print("每人餘生成本平均(至80歲,RMB):  mean=%.0f  median=%.0f" %
+    _n = TARGET_YEAR - COST_BASE_YEAR
+    print(f"物價校正={INFLATION_MEAN:.4f}(上海醫療保健類 CPI {COST_BASE_YEAR}→{TARGET_YEAR} "
+          f"逐年連乘 {_n} 項,年均 {INFLATION_MEAN ** (1/_n) - 1:+.2%})")
+    print(f"成本CV={COST_CV}、折現 {r:.0%}、時界={'生命表餘命' if HORIZON_MODE=='life_table' else f'至 {HORIZON_AGE} 歲'}\n")
+    print(f"每人餘生成本平均({horizon_label()},{money_label()}):  mean=%.0f  median=%.0f" %
           (out.lifetime_mean.mean(), out.lifetime_mean.median()))
-    print("母體餘生總成本(至80歲,RMB):    mean=%.0f  95%%CI=[%.0f, %.0f]" %
+    print(f"母體餘生總成本({horizon_label()},{money_label()}):    mean=%.0f  95%%模擬區間=[%.0f, %.0f]" %
           (all_pop.mean(), np.percentile(all_pop, 2.5), np.percentile(all_pop, 97.5)))
 
     # ---- 圖 1:各風險象限的終身成本(平均 + 95% 區間誤差棒)----
@@ -216,26 +381,35 @@ def main():
         x = np.arange(len(g))
         colors = ["#dc2626", "#f59e0b", "#3b82f6", "#16a34a"][:len(g)]
         yerr = np.vstack([(g["mean"] - g["lo"]) / 1e4, (g["hi"] - g["mean"]) / 1e4])
-        plt.bar(x, g["mean"] / 1e4, color=colors, alpha=0.85)
-        plt.errorbar(x, g["mean"] / 1e4, yerr=yerr, fmt="none", ecolor="#333", capsize=5, lw=1.2)
+        # 誤差線右移 0.22、長條收窄為 0.62,避免誤差線貫穿數值標籤
+        plt.bar(x, g["mean"] / 1e4, color=colors, alpha=0.85, width=0.62)
+        plt.errorbar(x + 0.22, g["mean"] / 1e4, yerr=yerr, fmt="none",
+                     ecolor="#333", capsize=5, lw=1.2)
         for xi, m in zip(x, g["mean"]):
-            plt.text(xi, m / 1e4, f"{m/1e4:.1f}萬", ha="center", va="bottom", fontsize=10)
+            plt.text(xi - 0.06, m / 1e4 + 1.5, f"{m/1e4:.1f} 萬", ha="center",
+                     va="bottom", fontsize=10, fontweight="bold")
+        plt.margins(y=0.16)
         plt.xticks(x, g.index, rotation=12, fontsize=9)
-        plt.ylabel("預估餘生醫療成本(萬元 RMB)")
-        plt.title(f"各風險象限餘生成本(至80歲):蒙地卡羅平均 + 95% 區間(成本源:陳興寶 2003)")
+        plt.ylabel(f"預估餘生醫療成本(萬元,{money_label()})")
+        plt.title(f"各風險象限餘生成本({money_label()};時界:{horizon_label()})\n"
+                  f"蒙地卡羅平均 + 95% 模擬區間(成本源:陳興寶 2003)")
         plt.tight_layout(); plt.savefig(f"{OUTDIR}/mc_cost_by_quadrant.png", dpi=150)
         if _NB: plt.show()
         plt.close()
 
     # ---- 圖 2:每位病患終身成本(依平均排序,含 95% 區間)----
-    s = out.sort_values("lifetime_mean").reset_index(drop=True)
+    # [修正 2 配套] 此圖與勞倫茲曲線、母體總計一致,皆以去重後的病患為單位;
+    #               全部 109 筆的個人估計仍完整輸出於 CSV。
+    s = out[out["counted_in_population"]].sort_values("lifetime_mean").reset_index(drop=True)
     plt.figure(figsize=(9, 4.4))
     xx = np.arange(len(s))
     plt.fill_between(xx, s.lifetime_lo / 1e4, s.lifetime_hi / 1e4,
                      color="#c4b5fd", alpha=0.6, label="95% 區間")
     plt.plot(xx, s.lifetime_mean / 1e4, color="#6d28d9", lw=1.5, label="平均")
-    plt.xlabel("病患(依餘生成本平均排序)"); plt.ylabel("餘生醫療成本(萬元 RMB)")
-    plt.title(f"每位病患餘生成本(至80歲):蒙地卡羅平均與 95% 區間(N={N_SIM}/人)")
+    plt.xlabel(f"病患(n={len(s)},依餘生成本平均排序;重複回診僅取首筆)")
+    plt.ylabel(f"餘生醫療成本(萬元,{money_label()})")
+    plt.title(f"每位病患餘生成本({money_label()};時界:{horizon_label()})\n"
+              f"蒙地卡羅平均與 95% 模擬區間(N={N_SIM}/人)")
     plt.legend(fontsize=9); plt.tight_layout()
     plt.savefig(f"{OUTDIR}/mc_cost_per_patient.png", dpi=150)
     if _NB: plt.show()
@@ -247,14 +421,16 @@ def main():
     for pct, lab, col in [(2.5, "2.5%", "#dc2626"), (50, "中位數", "#111"), (97.5, "97.5%", "#dc2626")]:
         v = np.percentile(all_pop, pct)
         plt.axvline(v / 1e6, color=col, ls="--", lw=1.1)
-    plt.xlabel("母體餘生總醫療成本(百萬元 RMB)"); plt.ylabel("模擬次數")
-    plt.title(f"母體餘生總成本(至80歲)的蒙地卡羅分布(N={N_SIM} 次)")
+    plt.xlabel(f"母體餘生總醫療成本(百萬元,{money_label()})"); plt.ylabel("模擬次數")
+    plt.title(f"母體餘生總成本的蒙地卡羅分布({money_label()};N={N_SIM} 次)\n"
+              f"時界:{horizon_label()};含全體共用之母體參數不確定性")
     plt.tight_layout(); plt.savefig(f"{OUTDIR}/mc_population_total.png", dpi=150)
     if _NB: plt.show()
     plt.close()
 
     # ---- 圖 4:成本集中度勞倫茲曲線 + Gini 係數 ----
-    cc = np.sort(out["lifetime_mean"].values)
+    # [修正 2] 集中度以「病患」為單位,不重複計入回診紀錄
+    cc = np.sort(out.loc[out["counted_in_population"], "lifetime_mean"].values)
     n = len(cc)
     cum_p = np.arange(1, n + 1) / n
     cum_c = np.cumsum(cc) / cc.sum()
@@ -276,15 +452,20 @@ def main():
         plt.annotate(f"最貴前{k}%\n占 {share:.0f}%", xy=(x, y), xytext=(x - 0.34, y + 0.05),
                      fontsize=9, color=col, arrowprops=dict(arrowstyle="->", color=col, lw=1))
     plt.xlabel("累積病患比例(由成本低到高)"); plt.ylabel("累積餘生成本比例")
-    plt.title("餘生醫療成本集中度:勞倫茲曲線")
+    plt.title(f"餘生醫療成本集中度:勞倫茲曲線(n=100 位病患)")
     plt.xlim(0, 1); plt.ylim(0, 1); plt.legend(loc="upper left", fontsize=9)
     plt.tight_layout(); plt.savefig(f"{OUTDIR}/mc_lorenz.png", dpi=150)
     if _NB: plt.show()
     plt.close()
     print(f"[集中度] Gini={gini:.3f};最貴前 10% 占 {top10:.1f}%、前 20% 占 {top20:.1f}% → mc_lorenz.png")
 
-    print(f"\n完成。輸出於 ./{OUTDIR}/  (patient_lifetime_cost_mc.csv、mc_*.png)")
-    print("提醒:已用 INFLATION_MEAN=1.8(醫療 CPI 估計)校正至約 2023 年幣值;請以統計年鑑醫療保健類 CPI 精確累計值取代。")
+    # ---- 敏感度分析:類別權重對機率校準與成本的影響 ----
+    sensitivity_class_weight(d, targets, pid, age, is_first)
+
+    print(f"\n完成。輸出於 ./{OUTDIR}/  (patient_lifetime_cost_mc.csv、mc_*.png、"
+          f"cost_sensitivity_class_weight.csv)")
+    print(f"提醒:金額為 {TARGET_YEAR} 年人民幣(上海醫療保健類 CPI 逐年連乘校正)。")
+    print("     LIFE_EXPECTANCY 仍為量級估計,建議以官方生命表取代。")
 
 
 if __name__ == "__main__":

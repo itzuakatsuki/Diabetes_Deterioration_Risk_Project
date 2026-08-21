@@ -95,7 +95,7 @@ def long_term_risk():
     prob = cross_val_predict(lr, X, y, cv=GroupKFold(5), groups=pid,
                              method="predict_proba")[:, 1]
     return pd.DataFrame({"record": record_id, "patient": pid.values,
-                         "OOF risk score": prob, "has_complication": y.values})
+                         "long_risk": prob, "has_complication": y.values})
 
 
 # ---------- 2. 短期風險:每位病患的馬可夫 P^k ----------

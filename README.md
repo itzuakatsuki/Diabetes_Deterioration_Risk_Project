@@ -260,7 +260,7 @@ USE_GROUP_CV = True
 
 分類、迴歸與風險引擎使用 out-of-fold（OOF）預測。每筆 OOF 預測來自未使用該驗證資料訓練的模型。
 
-分類表中的 AUC、AP、Accuracy、Precision、Recall 與 F1 為交叉驗證各折指標的平均與標準差；ROC 圖則使用合併後的 OOF 預測計算 pooled OOF AUC，兩者數值不一定完全相同。
+分類表中的 AUC、AP、Accuracy、Precision、Recall 與 F1 為交叉驗證各折指標的平均與標準差；ROC 圖則使用合併後的 OOF 預測計算 pooled OOF AUC，兩者數值不必完全相同。
 
 ---
 
@@ -470,16 +470,6 @@ LogisticRegression(class_weight="balanced")
 - 第 96 步不保證已達穩態；
 - 四象限依目前樣本中位數切分，不是外部驗證的臨床門檻。
 
-#### 目前程式執行前需確認
-
-目前 `long_term_risk()` 回傳欄位名稱與 `main()` 後續使用名稱必須一致。下游程式預期欄名為：
-
-```text
-long_risk
-```
-
-若回傳欄位仍為其他名稱，程式會在建立三分位與四象限時發生 `KeyError`。
-
 ### 6.5 `code/lifetime_cost_montecarlo.py`
 
 功能：
@@ -637,29 +627,7 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 ```
 
-### `requirements.txt` 注意事項
-
-`requirements.txt` 只能包含套件名稱、版本條件、空白行或以 `#` 開頭的註解。
-
-若檔案中仍含 Markdown 分隔線或表格，必須先刪除，否則安裝可能失敗。
-
-正確內容：
-
-```text
-numpy
-pandas
-scipy
-scikit-learn
-matplotlib
-seaborn
-openpyxl
-xlrd
-xgboost
-shap
-tensorflow
-```
-
-清理後執行：
+安裝套件：
 
 ```bash
 python -m pip install -r requirements.txt
@@ -844,16 +812,13 @@ mc_cost_by_quadrant.png
 
 ## 14. 已知實作問題
 
-1. `deterioration_risk.py` 的長期風險欄位名稱需與下游使用的 `long_risk` 統一。
-2. `requirements.txt` 若仍含 Markdown 表格，需先清理。
-3. pipeline 在病患去重模式下，`d_raw` 目前未同步去重。
-4. pipeline 結尾文字仍可能將 `IMP` 與 `SHAP` 寫成二選一，但實際上 `IMP` 固定產生，SHAP 為額外輸出。
-5. risk 的 `transition_matrix()` 目前忽略 timestamp。
-6. risk 的 Markov 起點固定為 `InRange`。
-7. cost 的 fixed-age 模式對已超過 horizon 的病患仍保留至少 1 年。
-8. cost 的部分「每人平均」與象限彙整仍使用全部紀錄。
-9. cost 的 class-weight sensitivity 有部分固定結論，正式報告應依實際輸出判讀。
-10. `LIFE_EXPECTANCY` 尚未替換為正式官方生命表。
+1. `requirements.txt` 與五支主程式版本尚未鎖定。
+2. pipeline 在病患去重模式下，`d_raw` 目前未同步去重。
+3. risk 的 `transition_matrix()` 目前忽略 timestamp。
+4. risk 的 Markov 起點固定為 `InRange`。
+5. cost 的 fixed-age 模式對已超過 horizon 的病患仍保留至少 1 年。
+6. cost 的部分「每人平均」與象限彙整仍使用全部紀錄。
+7. `LIFE_EXPECTANCY` 尚未替換為正式官方生命表。
 
 ---
 
@@ -914,7 +879,6 @@ data/cgm/*.xlsx
 
 - 建立 `project_schema.py`，集中管理欄位、mapping 與狀態門檻；
 - 建立 `config.py`，統一輸入與輸出路徑；
-- 修正 risk 的 `long_risk` 欄位名稱；
 - Markov 僅保留 14–16 分鐘有效轉移；
 - 以真實最後狀態作為個人 Markov 起點；
 - LSTM 在缺口處切段；
@@ -928,4 +892,3 @@ data/cgm/*.xlsx
 - 在乾淨環境完成五支程式的完整重現測試；
 - 鎖定 Python 與套件版本；
 - 若要建立真正的未來併發症與餘生成本模型，需加入縱向事件、逐年轉移與死亡資料。
-ing README_corrected_2026-08-07.md…]()

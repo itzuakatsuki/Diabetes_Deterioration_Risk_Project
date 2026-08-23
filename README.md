@@ -785,12 +785,6 @@ output_cost_mc/
 mc_cost_by_quadrant.png
 ```
 
-<h2>Project QR Code</h2>
-
-<p>掃描下方 QR Code 查看本專案：</p>
-
-<img src="qrcode.png" alt="Project QR Code" width="220">
-
 ---
 
 ## 13. 重現性

@@ -14,6 +14,28 @@
 
 ---
 
+## 線上決策支援 App
+
+本專案另提供「糖三臟」高齡友善糖尿病決策支援 App 原型，可直接透過 GitHub Pages 開啟，無須下載或安裝程式。
+
+### 開啟 App
+
+👉 [點此開啟糖三臟決策支援 App](https://itzuakatsuki.github.io/Diabetes_Deterioration_Risk_Project/)
+
+亦可使用手機掃描下方 QR Code：
+
+<p align="center">
+  <a href="https://itzuakatsuki.github.io/Diabetes_Deterioration_Risk_Project/">
+    <img src="qrcode_app.png" alt="糖三臟決策支援 App QR Code" width="220">
+  </a>
+</p>
+
+<p align="center">
+  <strong>掃描 QR Code 或點擊圖片即可開啟 App</strong>
+</p>
+
+---
+
 ## 1. 研究定位
 
 ### 1.1 臨床資料

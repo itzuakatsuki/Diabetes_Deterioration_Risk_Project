@@ -784,6 +784,15 @@ output_cost_mc/
 ```text
 mc_cost_by_quadrant.png
 ```
+## Project QR Code
+
+掃描 QR Code 快速開啟本專案：
+
+<h2>Project QR Code</h2>
+
+<p>掃描下方 QR Code 查看本專案：</p>
+
+<img src="qrcode.png" alt="Project QR Code" width="220">
 
 ---
 

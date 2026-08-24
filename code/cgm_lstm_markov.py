@@ -184,6 +184,72 @@ def markov_matrix(n_states=3, max_gap_min=30):
     print("  長期穩態分布(≈各狀態時間占比):", dict(zip(labels, np.round(stat, 3))))
     return P, labels, stat
 
+def markov_convergence(P, labels, start_state="InRange", steps=None, tag="",
+                       step_min=15):
+    """
+    輸出馬可夫鏈之收斂診斷:穩態分布、第二大特徵值、半衰期,以及 P^k 之逐步分布。
+
+    為何需要:短期風險軸以 P^k 推算「未來 k 步之出範圍機率」。
+    但轉移矩陣之 k 次方會隨 k 增大收斂至穩態,收斂後該列與「起點為何狀態」已無關,
+    其數值必然等同該段監測之狀態時間占比(即 TIR/TBR/TAR)。
+    因此長時界之推算不具前瞻意義,本表即為此性質之直接證據,
+    亦為短期風險軸選擇時界之量化依據。
+
+    參數
+      P            : 轉移矩陣(markov_matrix 之第一個回傳值)
+      labels       : 狀態名稱清單
+      start_state  : 起點狀態(預設目標範圍內)
+      steps        : 欲檢視之時步;預設 15 分鐘至 48 小時
+      tag          : 輸出檔名後綴(例如 "_3state")
+      step_min     : 每一時步之分鐘數(CGM 取樣間隔,本資料為 15 分鐘)
+
+    輸出
+      cgm_output/markov_convergence{tag}.csv  逐步分布與距穩態之差距
+      cgm_output/markov_stationary{tag}.csv   穩態分布、|lambda2| 與半衰期
+    """
+    n = P.shape[0]
+    if steps is None:
+        steps = [1, 2, 4, 8, 16, 24, 32, 48, 96, 192]
+    si = next((i for i, l in enumerate(labels)
+               if str(l).lower().startswith(start_state.lower())), n // 2)
+
+    # 穩態分布:轉移矩陣之左特徵向量(特徵值 = 1)
+    vals, vecs = np.linalg.eig(P.T)
+    pi = np.real(vecs[:, np.argmin(np.abs(vals - 1))])
+    pi = pi / pi.sum()
+    # 收斂速度:第二大特徵值之模與其對應半衰期
+    ev = np.sort(np.abs(np.linalg.eigvals(P)))[::-1]
+    lam2 = float(ev[1]) if n > 1 else 0.0
+    half_steps = np.log(0.5) / np.log(lam2) if 0 < lam2 < 1 else float("nan")
+
+    rows = []
+    for k in steps:
+        v = np.linalg.matrix_power(P, k)[si]
+        rows.append({"k_steps": k, "hours": round(k * step_min / 60, 2),
+                     **{str(l): round(float(x) * 100, 2) for l, x in zip(labels, v)},
+                     "max_dev_from_stationary_pp": round(float(np.abs(v - pi).max()) * 100, 2)})
+    rows.append({"k_steps": "stationary", "hours": "inf",
+                 **{str(l): round(float(x) * 100, 2) for l, x in zip(labels, pi)},
+                 "max_dev_from_stationary_pp": 0.0})
+    C = pd.DataFrame(rows)
+    C.to_csv(f"{OUTDIR}/markov_convergence{tag}.csv", index=False, encoding="utf-8-sig")
+
+    S = pd.DataFrame([{**{str(l): round(float(x) * 100, 2) for l, x in zip(labels, pi)},
+                       "lambda2": round(lam2, 4),
+                       "half_life_steps": round(float(half_steps), 2),
+                       "half_life_hours": round(float(half_steps) * step_min / 60, 2),
+                       "start_state": labels[si]}])
+    S.to_csv(f"{OUTDIR}/markov_stationary{tag}.csv", index=False, encoding="utf-8-sig")
+
+    print(f"\n[markov] 收斂診斷{tag}(自 {labels[si]} 出發)"
+          f" → markov_convergence{tag}.csv / markov_stationary{tag}.csv")
+    print("  穩態分布:", dict(zip(labels, np.round(pi * 100, 2))))
+    print(f"  |lambda2| = {lam2:.4f} → 半衰期 {half_steps:.1f} 步"
+          f" = {half_steps * step_min / 60:.1f} 小時")
+    print(C.to_string(index=False))
+    print("  ※ 當『與穩態差距』趨近 0,該時界之推算已等同狀態時間占比,不再帶有起點資訊。")
+    return C, S
+
 
 # ------------------------------------------------------------------ #
 # 4. 血糖波動圖(單一病患,含目標範圍帶)
